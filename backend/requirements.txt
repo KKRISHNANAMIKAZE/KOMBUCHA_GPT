@@ -7,3 +7,5 @@ groq
 python-dotenv
 pydantic
 pdfplumber
+pytesseract
+Pillow
