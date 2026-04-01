@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+
+# Data
+data/
+*.faiss
+*.npy
+*.json
+
+# Env
+.env
+venv/
+
+# OS
+.DS_Store

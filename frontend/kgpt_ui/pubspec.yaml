@@ -1,0 +1,38 @@
+name: kgpt_ui
+description: K-GPT Flutter Web Interface
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.2.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+
+  url_launcher: ^6.2.6
+
+  # API connection
+  http: ^1.6.0
+
+  # File picker
+  file_picker: ^10.3.10
+
+  # Firebase
+  firebase_core: ^4.5.0
+  cloud_firestore: ^6.1.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/kombucha_bg.png
+    - assets/kgpt_logo.png
