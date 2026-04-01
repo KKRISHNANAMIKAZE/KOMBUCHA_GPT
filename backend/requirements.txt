@@ -10,3 +10,4 @@ pdfplumber
 pytesseract
 Pillow
 firebase-admin
+python-docx
