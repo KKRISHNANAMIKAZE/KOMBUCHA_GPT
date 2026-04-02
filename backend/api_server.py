@@ -41,10 +41,21 @@ threading.Thread(target=load_data_background).start()
 
 # ================= FIREBASE =================
 
-cred = credentials.Certificate("serviceAccountKey.json")
+import json
+
+firebase_creds = os.getenv("FIREBASE_CREDENTIALS")
+
+if not firebase_creds:
+    raise Exception("FIREBASE_CREDENTIALS not set")
+
+cred_dict = json.loads(firebase_creds)
+
+cred = credentials.Certificate(cred_dict)
 firebase_admin.initialize_app(cred)
 
 db = firestore.client()
+
+print("✅ Firebase connected successfully")
 
 # ================= MEMORY =================
 
