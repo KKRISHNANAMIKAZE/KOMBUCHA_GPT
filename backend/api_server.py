@@ -507,3 +507,13 @@ def feedback_endpoint(req: FeedbackRequest):
         reply = "Thanks for the feedback. I'll try to improve my answers."
 
     return {"response": reply}
+
+if __name__ == "__main__":
+    import uvicorn
+    import os
+
+    port = int(os.environ.get("PORT", 10000))
+
+    print(f"🚀 Starting server on port {port}")
+
+    uvicorn.run("api_server:app", host="0.0.0.0", port=port)
