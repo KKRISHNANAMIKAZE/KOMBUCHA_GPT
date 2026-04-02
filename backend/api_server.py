@@ -95,29 +95,39 @@ INDEX_PATH = os.path.join(DATA_DIR, "kombucha_index.faiss")
 CHUNKS_PATH = os.path.join(DATA_DIR, "chunks.npy")
 METADATA_PATH = os.path.join(DATA_DIR, "metadata.npy")
 
-# ================= WAIT FOR FILES =================
+# ================= FIXED: GLOBAL PLACEHOLDERS =================
 
-def wait_for_files():
+research_index = None
+research_chunks = None
+research_metadata = None
+bm25 = None
+
+
+# ================= FIXED: STARTUP LOADER =================
+
+@app.on_event("startup")
+def load_data():
+    global research_index, research_chunks, research_metadata, bm25
+
+    print("⏳ Waiting for FAISS files...")
+
     while not (
         os.path.exists(INDEX_PATH) and
         os.path.exists(CHUNKS_PATH) and
         os.path.exists(METADATA_PATH)
     ):
-        print("⏳ Waiting for FAISS files...")
         time.sleep(5)
 
-wait_for_files()
+    print("✅ Files ready. Loading FAISS...")
 
-# ================= LOAD DATA =================
+    research_index = faiss.read_index(INDEX_PATH)
+    research_chunks = np.load(CHUNKS_PATH, allow_pickle=True).tolist()
+    research_metadata = np.load(METADATA_PATH, allow_pickle=True).tolist()
 
-research_index = faiss.read_index(INDEX_PATH)
-research_chunks = np.load(CHUNKS_PATH, allow_pickle=True).tolist()
-research_metadata = np.load(METADATA_PATH, allow_pickle=True).tolist()
+    tokenized_corpus = [chunk.split() for chunk in research_chunks]
+    bm25 = BM25Okapi(tokenized_corpus)
 
-tokenized_corpus = [chunk.split() for chunk in research_chunks]
-bm25 = BM25Okapi(tokenized_corpus)
-
-print("Research papers loaded:", len(research_chunks))
+    print("✅ Research papers loaded:", len(research_chunks))
 
 
 # ================= REQUEST MODELS =================
@@ -292,6 +302,13 @@ async def upload_file(file: UploadFile = File(...), session_id: str = "default")
 
 @app.post("/chat")
 def chat_endpoint(req: ChatRequest):
+
+    if research_index is None:
+        return {
+            "response": "System is still loading. Please try again in a few seconds.",
+            "suggestions": [],
+            "sources": []
+        }
 
     update_memory(req.session_id, "user", req.message)
     save_to_firebase(req.session_id, "user", req.message)
