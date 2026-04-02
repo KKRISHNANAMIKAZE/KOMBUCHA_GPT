@@ -1,14 +1,13 @@
+print("🚀 FILE STARTED EXECUTING")
 import io
 import os
 import faiss
 import numpy as np
 import pdfplumber
 import pytesseract
-import firebase_admin
 import threading
 import time
 
-from firebase_admin import credentials, firestore
 from datetime import datetime
 from PIL import Image
 from docx import Document
@@ -37,26 +36,6 @@ def load_data_background():
     print("🚀 Starting background data download...")
     download_files()
 
-threading.Thread(target=load_data_background).start()
-
-# ================= FIREBASE =================
-
-import json
-
-firebase_creds = os.getenv("FIREBASE_CREDENTIALS")
-
-if not firebase_creds:
-    raise Exception("FIREBASE_CREDENTIALS not set")
-
-cred_dict = json.loads(firebase_creds)
-
-cred = credentials.Certificate(cred_dict)
-firebase_admin.initialize_app(cred)
-
-db = firestore.client()
-
-print("✅ Firebase connected successfully")
-
 # ================= MEMORY =================
 
 conversation_memory = {}
@@ -74,20 +53,9 @@ def update_memory(session_id, role, message):
     conversation_memory[session_id] = conversation_memory[session_id][-10:]
 
 
+# 🔥 Firebase removed (safe dummy)
 def save_to_firebase(session_id, role, message):
-
-    session_ref = db.collection("sessions").document(session_id)
-
-    session_ref.set({
-        "session_id": session_id,
-        "created_at": datetime.utcnow()
-    }, merge=True)
-
-    session_ref.collection("messages").add({
-        "role": role,
-        "text": message,
-        "timestamp": datetime.utcnow()
-    })
+    pass
 
 
 # ================= MODELS =================
@@ -106,7 +74,7 @@ INDEX_PATH = os.path.join(DATA_DIR, "kombucha_index.faiss")
 CHUNKS_PATH = os.path.join(DATA_DIR, "chunks.npy")
 METADATA_PATH = os.path.join(DATA_DIR, "metadata.npy")
 
-# ================= FIXED: GLOBAL PLACEHOLDERS =================
+# ================= GLOBAL PLACEHOLDERS =================
 
 research_index = None
 research_chunks = None
@@ -114,7 +82,7 @@ research_metadata = None
 bm25 = None
 
 
-# ================= FIXED: STARTUP LOADER =================
+# ================= STARTUP LOADER =================
 
 @app.on_event("startup")
 def load_data():
@@ -125,7 +93,6 @@ def load_data():
 
         print("🚀 Background loading started...")
 
-        # ---------- WAIT FOR FILES ----------
         while not (
             os.path.exists(INDEX_PATH) and
             os.path.exists(CHUNKS_PATH) and
@@ -145,7 +112,6 @@ def load_data():
 
         print("✅ FAISS + BM25 ready")
 
-        # ---------- LOAD MODELS ----------
         print("⏳ Loading embedding models...")
 
         embed_model = SentenceTransformer("all-MiniLM-L6-v2")
@@ -153,8 +119,8 @@ def load_data():
 
         print("✅ Models loaded")
 
-    # 🔥 RUN IN BACKGROUND (IMPORTANT)
     threading.Thread(target=background_loader).start()
+
 
 # ================= REQUEST MODELS =================
 
@@ -329,7 +295,7 @@ async def upload_file(file: UploadFile = File(...), session_id: str = "default")
 @app.post("/chat")
 def chat_endpoint(req: ChatRequest):
 
-    if research_index is None:
+    if research_index is None or embed_model is None:
         return {
             "response": "System is still loading. Please try again in a few seconds.",
             "suggestions": [],
@@ -337,7 +303,6 @@ def chat_endpoint(req: ChatRequest):
         }
 
     update_memory(req.session_id, "user", req.message)
-    save_to_firebase(req.session_id, "user", req.message)
 
     general_words = ["hi", "hello", "hey", "thanks", "thank you"]
 
@@ -346,7 +311,6 @@ def chat_endpoint(req: ChatRequest):
         response = llm.generate(req.message, temperature=0.3)
 
         update_memory(req.session_id, "assistant", response)
-        save_to_firebase(req.session_id, "assistant", response)
 
         return {
             "response": response,
@@ -435,7 +399,6 @@ Question:
     answer = verify_answer(req.message, context, answer)
 
     update_memory(req.session_id, "assistant", answer)
-    save_to_firebase(req.session_id, "assistant", answer)
 
     suggestions = generate_followups(answer)
 
@@ -508,9 +471,11 @@ def feedback_endpoint(req: FeedbackRequest):
 
     return {"response": reply}
 
+
+# ================= MAIN =================
+
 if __name__ == "__main__":
     import uvicorn
-    import os
 
     port = int(os.environ.get("PORT", 10000))
 
