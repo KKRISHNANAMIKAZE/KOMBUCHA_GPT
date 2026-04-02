@@ -92,8 +92,8 @@ def save_to_firebase(session_id, role, message):
 
 # ================= MODELS =================
 
-embed_model = SentenceTransformer("all-MiniLM-L6-v2")
-reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
+embed_model = None
+reranker = None
 
 UPLOAD_DIR = "uploaded_indexes"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -118,28 +118,43 @@ bm25 = None
 
 @app.on_event("startup")
 def load_data():
-    global research_index, research_chunks, research_metadata, bm25
+    import threading
 
-    print("⏳ Waiting for FAISS files...")
+    def background_loader():
+        global research_index, research_chunks, research_metadata, bm25, embed_model, reranker
 
-    while not (
-        os.path.exists(INDEX_PATH) and
-        os.path.exists(CHUNKS_PATH) and
-        os.path.exists(METADATA_PATH)
-    ):
-        time.sleep(5)
+        print("🚀 Background loading started...")
 
-    print("✅ Files ready. Loading FAISS...")
+        # ---------- WAIT FOR FILES ----------
+        while not (
+            os.path.exists(INDEX_PATH) and
+            os.path.exists(CHUNKS_PATH) and
+            os.path.exists(METADATA_PATH)
+        ):
+            print("⏳ Waiting for FAISS files...")
+            time.sleep(5)
 
-    research_index = faiss.read_index(INDEX_PATH)
-    research_chunks = np.load(CHUNKS_PATH, allow_pickle=True).tolist()
-    research_metadata = np.load(METADATA_PATH, allow_pickle=True).tolist()
+        print("✅ Files ready. Loading FAISS...")
 
-    tokenized_corpus = [chunk.split() for chunk in research_chunks]
-    bm25 = BM25Okapi(tokenized_corpus)
+        research_index = faiss.read_index(INDEX_PATH)
+        research_chunks = np.load(CHUNKS_PATH, allow_pickle=True).tolist()
+        research_metadata = np.load(METADATA_PATH, allow_pickle=True).tolist()
 
-    print("✅ Research papers loaded:", len(research_chunks))
+        tokenized_corpus = [chunk.split() for chunk in research_chunks]
+        bm25 = BM25Okapi(tokenized_corpus)
 
+        print("✅ FAISS + BM25 ready")
+
+        # ---------- LOAD MODELS ----------
+        print("⏳ Loading embedding models...")
+
+        embed_model = SentenceTransformer("all-MiniLM-L6-v2")
+        reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
+
+        print("✅ Models loaded")
+
+    # 🔥 RUN IN BACKGROUND (IMPORTANT)
+    threading.Thread(target=background_loader).start()
 
 # ================= REQUEST MODELS =================
 
