@@ -8,6 +8,9 @@ from core.hallucination_detector import HallucinationDetector
 from models.llm_interface import LLMInterface
 from evaluation.logger import Logger
 
+from rag.retriever import Retriever
+from data_loader import download_files
+
 import json
 import os
 from datetime import datetime
@@ -22,6 +25,12 @@ validator = ResponseValidator()
 hallucination_detector = HallucinationDetector()
 orchestrator = PromptOrchestrator()
 logger = Logger("framework_results.csv")
+
+# 🔥 Download FAISS data from Google Drive
+download_files()
+
+# 🔥 Initialize FAISS Retriever
+retriever = Retriever()
 
 current_domain = None
 
@@ -167,12 +176,8 @@ def process_query(query):
     # 3️⃣ Adaptive Control Policy
     control = control_policy.adapt(risk_score)
 
-    # ================= SAFE RETRIEVAL =================
-    retrieved_context = """
-Kombucha is a fermented tea made using a symbiotic culture of bacteria and yeast (SCOBY).
-It is known for probiotics, antioxidants, and potential health benefits such as improved digestion.
-"""
-    sources = [{"citation": "Kombucha Research Literature"}]
+    # 🔥 4️⃣ REAL FAISS RETRIEVAL
+    retrieved_context, sources = retriever.retrieve(query, k=5)
 
     # 5️⃣ Prompt Construction
     prompt = orchestrator.build_prompt(
@@ -183,7 +188,7 @@ It is known for probiotics, antioxidants, and potential health benefits such as 
         retrieved_context
     )
 
-    # 6️⃣ LLM Generation
+    # 6️⃣ LLM Generation (Groq)
     response = llm.generate(prompt, control["temperature"])
 
     # 7️⃣ Hallucination Detection

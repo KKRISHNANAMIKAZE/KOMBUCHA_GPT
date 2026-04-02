@@ -1,103 +1,78 @@
 import os
-from llama_index.core import (
-    StorageContext,
-    load_index_from_storage,
-    Settings,
-    SimpleDirectoryReader,
-    VectorStoreIndex
-)
-from llama_index.embeddings.ollama import OllamaEmbedding
+import faiss
+import numpy as np
+from sentence_transformers import SentenceTransformer
 
 
 class Retriever:
 
     def __init__(self):
 
-        Settings.embed_model = OllamaEmbedding(
-            model_name="nomic-embed-text",
-            base_url="http://localhost:11434"
-        )
-
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-        storage_context = StorageContext.from_defaults(
-            persist_dir=os.path.join(base_dir, "rag", "index")
-        )
+        # 📂 Load FAISS data
+        data_path = os.path.join(base_dir, "data")
 
-        self.main_index = load_index_from_storage(storage_context)
+        print("🔄 Loading FAISS index...")
 
-        self.memory_path = os.path.join(
-            base_dir,
-            "data",
-            "conversation_memory"
-        )
+        self.index = faiss.read_index(os.path.join(data_path, "kombucha_index.faiss"))
+        self.chunks = np.load(os.path.join(data_path, "chunks.npy"), allow_pickle=True)
+        self.metadata = np.load(os.path.join(data_path, "metadata.npy"), allow_pickle=True)
 
-        self.memory_index = None
-        self._load_memory_index()
+        # ✅ Embedding model (same as used during indexing)
+        self.model = SentenceTransformer("all-MiniLM-L6-v2")
 
-    def _load_memory_index(self):
+        print("✅ FAISS Retriever Ready")
 
-        if not os.path.exists(self.memory_path):
-            return
+        # 📂 Memory (same as your old system)
+        self.memory_path = os.path.join(base_dir, "data", "conversation_memory")
 
-        if not os.listdir(self.memory_path):
-            return
 
-        documents = SimpleDirectoryReader(
-            self.memory_path
-        ).load_data()
-
-        if documents:
-            self.memory_index = VectorStoreIndex.from_documents(
-                documents
-            )
-
-    def retrieve(self, query: str, k: int):
-
-        self._load_memory_index()
-
-        # -------- Main Retrieval --------
-        main_retriever = self.main_index.as_retriever(
-            similarity_top_k=k
-        )
-
-        main_nodes = main_retriever.retrieve(query)
-
-        main_context = "\n\n".join(
-            [node.text for node in main_nodes]
-        )
-
-        # -------- Extract Sources --------
-        sources = []
-
-        for node in main_nodes[:3]:
-            filename = node.metadata.get(
-                "file_name",
-                "Unknown Source"
-            )
-
-            snippet = node.text[:300].replace("\n", " ")
-
-            sources.append({
-                "file": filename,
-                "snippet": snippet
-            })
-
-        # -------- Memory Retrieval --------
+    def _load_memory(self):
         memory_context = ""
 
-        if self.memory_index is not None:
+        if not os.path.exists(self.memory_path):
+            return memory_context
 
-            memory_retriever = self.memory_index.as_retriever(
-                similarity_top_k=2
-            )
+        files = os.listdir(self.memory_path)
 
-            memory_nodes = memory_retriever.retrieve(query)
+        for file in files[-3:]:  # last 3 conversations
+            try:
+                with open(os.path.join(self.memory_path, file), "r", encoding="utf-8") as f:
+                    memory_context += f.read() + "\n\n"
+            except:
+                continue
 
-            memory_context = "\n\n".join(
-                [node.text for node in memory_nodes]
-            )
+        return memory_context
 
+
+    def retrieve(self, query: str, k: int = 5):
+
+        # 🔍 Convert query → embedding
+        query_embedding = self.model.encode([query])
+
+        # 🔍 Search FAISS
+        D, I = self.index.search(query_embedding, k)
+
+        main_context = ""
+        sources = []
+
+        for idx in I[0]:
+            chunk = self.chunks[idx]
+            meta = self.metadata[idx]
+
+            main_context += chunk + "\n\n"
+
+            sources.append({
+                "title": meta.get("title", "Unknown"),
+                "author": meta.get("author", ""),
+                "year": meta.get("year", "")
+            })
+
+        # 🧠 Load memory
+        memory_context = self._load_memory()
+
+        # 🧾 Final combined context
         combined_context = f"""
 ### Knowledge Context:
 {main_context}

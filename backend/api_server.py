@@ -17,6 +17,7 @@ from sentence_transformers import SentenceTransformer, CrossEncoder
 from rank_bm25 import BM25Okapi
 
 from app import save_feedback, llm, generate_followups
+from data_loader import download_files   # ✅ ADDED
 
 app = FastAPI()
 
@@ -27,6 +28,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ================= DOWNLOAD DATA =================
+download_files()   # ✅ ADDED (VERY IMPORTANT)
 
 # ================= FIREBASE =================
 
@@ -78,10 +82,14 @@ reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
 UPLOAD_DIR = "uploaded_indexes"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-INDEX_PATH = r"C:\Kombucha_chatbot\kombucha_index.faiss"
-CHUNKS_PATH = r"C:\Kombucha_chatbot\chunks.npy"
-METADATA_PATH = r"C:\Kombucha_chatbot\metadata.npy"
+# ================= PATH FIX (ONLY CHANGE) =================
+DATA_DIR = "data"
 
+INDEX_PATH = os.path.join(DATA_DIR, "kombucha_index.faiss")
+CHUNKS_PATH = os.path.join(DATA_DIR, "chunks.npy")
+METADATA_PATH = os.path.join(DATA_DIR, "metadata.npy")
+
+# ================= LOAD DATA =================
 research_index = faiss.read_index(INDEX_PATH)
 research_chunks = np.load(CHUNKS_PATH, allow_pickle=True).tolist()
 research_metadata = np.load(METADATA_PATH, allow_pickle=True).tolist()
@@ -259,6 +267,7 @@ async def upload_file(file: UploadFile = File(...), session_id: str = "default")
         print("FILE ERROR:", e)
         return {"status": "error_processing_file"}
 
+
 # ================= CHAT =================
 
 @app.post("/chat")
@@ -367,8 +376,6 @@ Question:
 
     suggestions = generate_followups(answer)
 
-    # ✅ FIXED SOURCE LOGIC (INSIDE FUNCTION)
-
     sorted_papers = sorted(
         paper_counter.items(),
         key=lambda x: x[1],
@@ -391,7 +398,6 @@ Question:
         if src:
             link = src.get("url") or src.get("doi")
 
-        # fallback → Google Scholar
         if not link:
             query = urllib.parse.quote(citation)
             link = f"https://scholar.google.com/scholar?q={query}"
@@ -406,6 +412,7 @@ Question:
         "suggestions": suggestions,
         "sources": sources
     }
+
 
 # ================= CLEAR FILE =================
 

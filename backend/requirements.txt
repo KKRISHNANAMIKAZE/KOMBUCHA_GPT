@@ -11,3 +11,7 @@ pytesseract
 Pillow
 firebase-admin
 python-docx
+gdown
+faiss-cpu
+numpy
+sentence-transformers
