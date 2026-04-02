@@ -5,6 +5,8 @@ import numpy as np
 import pdfplumber
 import pytesseract
 import firebase_admin
+import threading
+import time
 
 from firebase_admin import credentials, firestore
 from datetime import datetime
@@ -17,7 +19,7 @@ from sentence_transformers import SentenceTransformer, CrossEncoder
 from rank_bm25 import BM25Okapi
 
 from app import save_feedback, llm, generate_followups
-from data_loader import download_files   # ✅ ADDED
+from data_loader import download_files
 
 app = FastAPI()
 
@@ -29,8 +31,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ================= DOWNLOAD DATA =================
-download_files()   # ✅ ADDED (VERY IMPORTANT)
+# ================= BACKGROUND DOWNLOAD =================
+
+def load_data_background():
+    print("🚀 Starting background data download...")
+    download_files()
+
+threading.Thread(target=load_data_background).start()
 
 # ================= FIREBASE =================
 
@@ -56,8 +63,6 @@ def update_memory(session_id, role, message):
     conversation_memory[session_id] = conversation_memory[session_id][-10:]
 
 
-# ================= FIREBASE SAVE =================
-
 def save_to_firebase(session_id, role, message):
 
     session_ref = db.collection("sessions").document(session_id)
@@ -82,14 +87,29 @@ reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
 UPLOAD_DIR = "uploaded_indexes"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-# ================= PATH FIX (ONLY CHANGE) =================
+# ================= PATHS =================
+
 DATA_DIR = "data"
 
 INDEX_PATH = os.path.join(DATA_DIR, "kombucha_index.faiss")
 CHUNKS_PATH = os.path.join(DATA_DIR, "chunks.npy")
 METADATA_PATH = os.path.join(DATA_DIR, "metadata.npy")
 
+# ================= WAIT FOR FILES =================
+
+def wait_for_files():
+    while not (
+        os.path.exists(INDEX_PATH) and
+        os.path.exists(CHUNKS_PATH) and
+        os.path.exists(METADATA_PATH)
+    ):
+        print("⏳ Waiting for FAISS files...")
+        time.sleep(5)
+
+wait_for_files()
+
 # ================= LOAD DATA =================
+
 research_index = faiss.read_index(INDEX_PATH)
 research_chunks = np.load(CHUNKS_PATH, allow_pickle=True).tolist()
 research_metadata = np.load(METADATA_PATH, allow_pickle=True).tolist()
