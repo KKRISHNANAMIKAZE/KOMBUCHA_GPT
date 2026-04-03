@@ -5,7 +5,6 @@ import faiss
 import numpy as np
 import pdfplumber
 import pytesseract
-import threading
 import time
 
 from datetime import datetime
@@ -35,7 +34,6 @@ app.add_middleware(
 conversation_memory = {}
 
 def update_memory(session_id, role, message):
-
     if session_id not in conversation_memory:
         conversation_memory[session_id] = []
 
@@ -51,10 +49,7 @@ def save_to_firebase(session_id, role, message):
     pass
 
 
-# ================= MODELS =================
-
-embed_model = None
-reranker = None
+# ================= PATHS =================
 
 UPLOAD_DIR = "uploaded_indexes"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -65,14 +60,20 @@ INDEX_PATH = os.path.join(DATA_DIR, "kombucha_index.faiss")
 CHUNKS_PATH = os.path.join(DATA_DIR, "chunks.npy")
 METADATA_PATH = os.path.join(DATA_DIR, "metadata.npy")
 
+# ================= GLOBAL =================
+
 research_index = None
 research_chunks = None
 research_metadata = None
 bm25 = None
 
-# ================= 🔥 LAZY INITIALIZER =================
+embed_model = None
+reranker = None
 
 model_loaded = False
+
+
+# ================= LAZY INITIALIZER =================
 
 def initialize_system():
     global research_index, research_chunks, research_metadata, bm25
@@ -118,7 +119,6 @@ class FeedbackRequest(BaseModel):
 # ================= TEXT CHUNKING =================
 
 def chunk_text(text, chunk_size=800, overlap=150):
-
     chunks = []
     start = 0
 
@@ -133,7 +133,6 @@ def chunk_text(text, chunk_size=800, overlap=150):
 # ================= MULTI QUERY =================
 
 def generate_search_queries(question):
-
     prompt = f"""
 Generate 3 scientific search queries related to the question.
 
@@ -142,7 +141,6 @@ Question:
 
 Return only queries separated by newline.
 """
-
     try:
         queries = llm.generate(prompt, temperature=0.3)
         query_list = [q.strip() for q in queries.split("\n") if q.strip()]
@@ -155,7 +153,6 @@ Return only queries separated by newline.
 # ================= SELF REFLECTION =================
 
 def verify_answer(question, context, answer):
-
     prompt = f"""
 You are verifying an AI answer.
 
@@ -172,7 +169,6 @@ If the answer contains unsupported claims, rewrite it so it ONLY contains inform
 
 Return ONLY the corrected answer.
 """
-
     try:
         return llm.generate(prompt, temperature=0.2)
     except:
@@ -182,7 +178,6 @@ Return ONLY the corrected answer.
 # ================= RERANK =================
 
 def rerank_chunks(query, chunks, top_k=6):
-
     pairs = [[query, chunk] for chunk in chunks]
     scores = reranker.predict(pairs)
     ranked = sorted(zip(chunks, scores), key=lambda x: x[1], reverse=True)
@@ -248,17 +243,109 @@ async def upload_file(file: UploadFile = File(...), session_id: str = "default")
 @app.post("/chat")
 def chat_endpoint(req: ChatRequest):
 
-    initialize_system()  # 🔥 KEY FIX
+    initialize_system()
 
     update_memory(req.session_id, "user", req.message)
 
-    # (rest of your logic unchanged)
+    general_words = ["hi", "hello", "hey", "thanks", "thank you"]
 
-    # ================= MAIN =================
+    if req.message.lower().strip() in general_words:
+        response = llm.generate(req.message, temperature=0.3)
+        update_memory(req.session_id, "assistant", response)
+        return {
+            "response": response,
+            "suggestions": generate_followups(response),
+            "sources": []
+        }
+
+    retrieved_chunks = []
+    paper_counter = {}
+
+    search_queries = generate_search_queries(req.message)
+
+    for query in search_queries:
+
+        query_embedding = embed_model.encode([query])
+
+        D, I = research_index.search(
+            np.array(query_embedding).astype("float32"),
+            k=5
+        )
+
+        for i in I[0]:
+            if 0 <= i < len(research_chunks):
+
+                chunk = research_chunks[i]
+
+                if chunk not in retrieved_chunks:
+                    retrieved_chunks.append(chunk)
+
+                    src = research_metadata[i]
+                    citation = f"{src.get('author','Unknown')} ({src.get('year','Unknown')}) - {src.get('title','Unknown')}"
+                    paper_counter[citation] = paper_counter.get(citation, 0) + 1
+
+        tokenized_query = query.split()
+        bm25_scores = bm25.get_scores(tokenized_query)
+        top_indices = np.argsort(bm25_scores)[-5:]
+
+        for i in top_indices:
+            chunk = research_chunks[i]
+
+            if chunk not in retrieved_chunks:
+                retrieved_chunks.append(chunk)
+
+                src = research_metadata[i]
+                citation = f"{src.get('author','Unknown')} ({src.get('year','Unknown')}) - {src.get('title','Unknown')}"
+                paper_counter[citation] = paper_counter.get(citation, 0) + 1
+
+    if len(retrieved_chunks) > 6:
+        retrieved_chunks = rerank_chunks(req.message, retrieved_chunks)
+
+    context = "\n\n".join(retrieved_chunks[:6])
+
+    history = ""
+    if req.session_id in conversation_memory:
+        for m in conversation_memory[req.session_id]:
+            history += f"{m['role']}: {m['content']}\n"
+
+    prompt = f"""
+You are K-GPT, a kombucha scientific research assistant.
+
+Conversation History:
+{history}
+
+Context:
+{context}
+
+Question:
+{req.message}
+"""
+
+    answer = llm.generate(prompt, temperature=0.3)
+    answer = verify_answer(req.message, context, answer)
+
+    update_memory(req.session_id, "assistant", answer)
+
+    suggestions = generate_followups(answer)
+
+    return {
+        "response": answer,
+        "suggestions": suggestions,
+        "sources": []
+    }
+
+
+# ================= ROOT =================
+
+@app.get("/")
+def home():
+    return {"status": "OK"}
+
+
+# ================= MAIN =================
 
 if __name__ == "__main__":
     import uvicorn
-    import os
 
     port = int(os.environ.get("PORT", 10000))
 
