@@ -2,7 +2,7 @@ fastapi
 uvicorn[standard]
 
 numpy
-faiss-cpu
+faiss-cpu==1.7.4
 
 sentence-transformers
 rank-bm25
@@ -17,5 +17,3 @@ Pillow
 python-docx
 
 gdown
-
-firebase-admin
