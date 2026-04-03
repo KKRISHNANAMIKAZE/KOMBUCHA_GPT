@@ -253,3 +253,15 @@ def chat_endpoint(req: ChatRequest):
     update_memory(req.session_id, "user", req.message)
 
     # (rest of your logic unchanged)
+
+    # ================= MAIN =================
+
+if __name__ == "__main__":
+    import uvicorn
+    import os
+
+    port = int(os.environ.get("PORT", 10000))
+
+    print(f"🚀 Starting server on port {port}")
+
+    uvicorn.run(app, host="0.0.0.0", port=port)
