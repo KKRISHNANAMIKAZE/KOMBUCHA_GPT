@@ -84,7 +84,6 @@ bm25 = None
 
 # ================= STARTUP LOADER =================
 
-@app.on_event("startup")
 def load_data():
     import threading
 
@@ -439,7 +438,6 @@ Question:
         "sources": sources
     }
 
-
 # ================= CLEAR FILE =================
 
 @app.post("/clear-file")
@@ -476,9 +474,19 @@ def feedback_endpoint(req: FeedbackRequest):
 
 if __name__ == "__main__":
     import uvicorn
+    import os
+    import threading
 
     port = int(os.environ.get("PORT", 10000))
 
-    print(f"🚀 Starting server on port {port}")
+    print(f"🚀 Starting server immediately on port {port}")
+
+    # Start heavy loading AFTER server starts
+    def delayed_start():
+        time.sleep(2)  # let server boot first
+        print("🚀 Starting background processes...")
+        load_data_background()
+
+    threading.Thread(target=delayed_start).start()
 
     uvicorn.run("api_server:app", host="0.0.0.0", port=port)
