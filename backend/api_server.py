@@ -2,10 +2,9 @@ print("🚀 FILE STARTED EXECUTING")
 
 import io
 import os
-import faiss
-import numpy as np
 import pdfplumber
 import pytesseract
+import urllib.parse
 
 from datetime import datetime
 from PIL import Image
@@ -13,8 +12,6 @@ from docx import Document
 from pydantic import BaseModel
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-from sentence_transformers import SentenceTransformer, CrossEncoder
-from rank_bm25 import BM25Okapi
 
 from app import save_feedback, llm, generate_followups
 from data_loader import download_files
@@ -86,13 +83,16 @@ def initialize_system():
     print("⚡ Lazy initialization triggered...")
 
     try:
-        download_files()
-        print("✅ Files downloaded")
-    except Exception as e:
-        print("❌ Download failed:", e)
-        return
+        # 🔥 HEAVY IMPORTS MOVED HERE
+        import faiss
+        import numpy as np
+        from sentence_transformers import SentenceTransformer, CrossEncoder
+        from rank_bm25 import BM25Okapi
 
-    try:
+        # Download
+        download_files()
+
+        # Load FAISS + data
         research_index = faiss.read_index(INDEX_PATH)
         research_chunks = np.load(CHUNKS_PATH, allow_pickle=True).tolist()
         research_metadata = np.load(METADATA_PATH, allow_pickle=True).tolist()
@@ -100,24 +100,15 @@ def initialize_system():
         tokenized_corpus = [chunk.split() for chunk in research_chunks]
         bm25 = BM25Okapi(tokenized_corpus)
 
-        print("✅ FAISS + chunks loaded")
-
-    except Exception as e:
-        print("❌ FAISS loading failed:", e)
-        return
-
-    try:
+        # Models
         embed_model = SentenceTransformer("all-MiniLM-L6-v2")
         reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
 
-        print("✅ Models loaded")
+        model_loaded = True
+        print("🚀 SYSTEM READY")
 
     except Exception as e:
-        print("❌ Model loading failed:", e)
-        return
-
-    model_loaded = True
-    print("🚀 System FULLY READY")
+        print("❌ INIT ERROR:", e)
 
 
 # ================= REQUEST MODELS =================
@@ -150,6 +141,7 @@ def chunk_text(text, chunk_size=800, overlap=150):
 # ================= MULTI QUERY =================
 
 def generate_search_queries(question):
+
     prompt = f"""
 Generate 3 scientific search queries related to the question.
 
@@ -158,11 +150,13 @@ Question:
 
 Return only queries separated by newline.
 """
+
     try:
         queries = llm.generate(prompt, temperature=0.3)
         query_list = [q.strip() for q in queries.split("\n") if q.strip()]
         query_list.insert(0, question)
         return query_list[:4]
+
     except:
         return [question]
 
@@ -170,6 +164,7 @@ Return only queries separated by newline.
 # ================= SELF REFLECTION =================
 
 def verify_answer(question, context, answer):
+
     prompt = f"""
 You are verifying an AI answer.
 
@@ -186,6 +181,7 @@ If the answer contains unsupported claims, rewrite it so it ONLY contains inform
 
 Return ONLY the corrected answer.
 """
+
     try:
         return llm.generate(prompt, temperature=0.2)
     except:
@@ -209,6 +205,9 @@ async def upload_file(file: UploadFile = File(...), session_id: str = "default")
     if embed_model is None:
         return {"status": "system_not_ready"}
 
+    import numpy as np
+    import faiss
+
     content = await file.read()
     extracted_text = ""
     filename = file.filename.lower()
@@ -219,12 +218,12 @@ async def upload_file(file: UploadFile = File(...), session_id: str = "default")
                 for page in pdf.pages:
                     text = page.extract_text()
                     if text:
-                        extracted_text += text.replace("\n", " ").strip() + " "
+                        extracted_text += text
 
         elif filename.endswith(".docx"):
             doc = Document(io.BytesIO(content))
             for para in doc.paragraphs:
-                extracted_text += para.text + " "
+                extracted_text += para.text
 
         elif filename.endswith(".txt"):
             extracted_text = content.decode(errors="ignore")
@@ -263,7 +262,7 @@ def chat_endpoint(req: ChatRequest):
     if not model_loaded:
         initialize_system()
         return {
-            "response": "⏳ System is starting (downloading + loading models). Please try again in 20–60 seconds.",
+            "response": "⏳ System starting... try again in 30–60 seconds",
             "suggestions": [],
             "sources": []
         }
@@ -275,6 +274,7 @@ def chat_endpoint(req: ChatRequest):
     if req.message.lower().strip() in general_words:
         response = llm.generate(req.message, temperature=0.3)
         update_memory(req.session_id, "assistant", response)
+
         return {
             "response": response,
             "suggestions": generate_followups(response),
@@ -290,10 +290,7 @@ def chat_endpoint(req: ChatRequest):
 
         query_embedding = embed_model.encode([query])
 
-        D, I = research_index.search(
-            np.array(query_embedding).astype("float32"),
-            k=5
-        )
+        D, I = research_index.search(query_embedding.astype("float32"), k=5)
 
         for i in I[0]:
             if 0 <= i < len(research_chunks):
@@ -304,12 +301,14 @@ def chat_endpoint(req: ChatRequest):
                     retrieved_chunks.append(chunk)
 
                     src = research_metadata[i]
+
                     citation = f"{src.get('author','Unknown')} ({src.get('year','Unknown')}) - {src.get('title','Unknown')}"
+
                     paper_counter[citation] = paper_counter.get(citation, 0) + 1
 
         tokenized_query = query.split()
         bm25_scores = bm25.get_scores(tokenized_query)
-        top_indices = np.argsort(bm25_scores)[-5:]
+        top_indices = bm25_scores.argsort()[-5:]
 
         for i in top_indices:
             chunk = research_chunks[i]
@@ -318,7 +317,9 @@ def chat_endpoint(req: ChatRequest):
                 retrieved_chunks.append(chunk)
 
                 src = research_metadata[i]
+
                 citation = f"{src.get('author','Unknown')} ({src.get('year','Unknown')}) - {src.get('title','Unknown')}"
+
                 paper_counter[citation] = paper_counter.get(citation, 0) + 1
 
     if len(retrieved_chunks) > 6:
@@ -351,10 +352,24 @@ Question:
 
     suggestions = generate_followups(answer)
 
+    # SOURCE LOGIC
+    sorted_papers = sorted(paper_counter.items(), key=lambda x: x[1], reverse=True)
+
+    sources = []
+
+    for citation, count in sorted_papers[:4]:
+        query = urllib.parse.quote(citation)
+        link = f"https://scholar.google.com/scholar?q={query}"
+
+        sources.append({
+            "citation": citation,
+            "link": link
+        })
+
     return {
         "response": answer,
         "suggestions": suggestions,
-        "sources": []
+        "sources": sources
     }
 
 
