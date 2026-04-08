@@ -17,3 +17,4 @@ Pillow
 python-docx
 
 gdown
+python-multipart
