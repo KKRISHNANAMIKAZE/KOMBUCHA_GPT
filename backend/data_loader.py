@@ -18,7 +18,12 @@ def download_files():
             continue
 
         print(f"⬇️ Downloading {filename}...")
+
         url = f"https://drive.google.com/uc?id={file_id}"
-        gdown.download(url, path, quiet=False)
+
+        try:
+            gdown.download(url, path, quiet=True, fuzzy=True)
+        except Exception as e:
+            print(f"❌ Failed to download {filename}: {e}")
 
     print("✅ All files ready")

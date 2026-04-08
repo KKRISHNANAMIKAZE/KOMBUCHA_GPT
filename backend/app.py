@@ -16,27 +16,48 @@ import os
 from datetime import datetime
 
 
-# ================= INITIALIZATION =================
-domain_classifier = DomainClassifier()
-risk_detector = RiskDetector()
-control_policy = ControlPolicy()
-llm = LLMInterface()
-validator = ResponseValidator()
-hallucination_detector = HallucinationDetector()
-orchestrator = PromptOrchestrator()
-logger = Logger("framework_results.csv")
+# ================= GLOBAL (CHANGED TO LAZY) =================
+domain_classifier = None
+risk_detector = None
+control_policy = None
+llm = None
+validator = None
+hallucination_detector = None
+orchestrator = None
+logger = None
 
-# ❌ REMOVED: download_files()
-# ❌ REMOVED: retriever = Retriever()
-
-# ✅ NEW GLOBALS
 retriever = None
 data_loaded = False
+system_loaded = False
 
 current_domain = None
 
 
-# ================= 🔥 LAZY LOADING =================
+# ================= 🔥 LAZY CORE INIT =================
+def initialize_core():
+    global domain_classifier, risk_detector, control_policy
+    global llm, validator, hallucination_detector, orchestrator, logger
+    global system_loaded
+
+    if system_loaded:
+        return
+
+    print("⚡ Initializing core system...")
+
+    domain_classifier = DomainClassifier()
+    risk_detector = RiskDetector()
+    control_policy = ControlPolicy()
+    llm = LLMInterface()
+    validator = ResponseValidator()
+    hallucination_detector = HallucinationDetector()
+    orchestrator = PromptOrchestrator()
+    logger = Logger("framework_results.csv")
+
+    system_loaded = True
+    print("✅ Core system ready")
+
+
+# ================= 🔥 LAZY RAG INIT =================
 def initialize_rag():
     global retriever, data_loaded
 
@@ -45,7 +66,6 @@ def initialize_rag():
 
     print("🚀 Loading FAISS + Retriever...")
 
-    # ✅ Download only if NOT already present
     if not os.path.exists("data/kombucha_index.faiss"):
         download_files()
 
@@ -117,6 +137,8 @@ def save_feedback(query, response, feedback_type):
 # ================= FOLLOW-UP GENERATOR =================
 def generate_followups(response):
 
+    initialize_core()
+
     follow_prompt = f"""
 Based on this kombucha explanation:
 
@@ -142,6 +164,8 @@ Return ONLY the questions as a numbered list.
 # ================= FILE ANALYZER =================
 def analyze_uploaded_file(file_text, user_query=None):
 
+    initialize_core()
+
     prompt = f"""
 You are K-GPT, a kombucha-only research assistant.
 
@@ -164,10 +188,9 @@ User Question:
 def process_query(query):
     global current_domain
 
-    # 🔥 ADD THIS (IMPORTANT FIX)
+    initialize_core()
     initialize_rag()
 
-    # 1️⃣ Domain Classification
     domain_info = domain_classifier.classify(query)
     detected_domain = domain_info["domain"]
 
@@ -192,17 +215,13 @@ def process_query(query):
             []
         )
 
-    # 2️⃣ Risk Scoring
     risk_info = risk_detector.detect(query)
     risk_score = risk_info["risk_score"]
 
-    # 3️⃣ Adaptive Control Policy
     control = control_policy.adapt(risk_score)
 
-    # 🔥 FAISS RETRIEVAL
     retrieved_context, sources = retriever.retrieve(query, k=5)
 
-    # 5️⃣ Prompt Construction
     prompt = orchestrator.build_prompt(
         query,
         domain_info,
@@ -211,10 +230,8 @@ def process_query(query):
         retrieved_context
     )
 
-    # 6️⃣ LLM Generation
     response = llm.generate(prompt, control["temperature"])
 
-    # 7️⃣ Hallucination Detection
     similarity_score = hallucination_detector.detect(
         response,
         retrieved_context
@@ -232,7 +249,6 @@ def process_query(query):
                 "Please consult a qualified expert."
             )
 
-    # 8️⃣ Logging
     logger.log(
         query=query,
         domain=detected_domain,
@@ -241,10 +257,8 @@ def process_query(query):
         validated=validated
     )
 
-    # 9️⃣ Save Memory
     save_conversation(query, response)
 
-    # 🔟 Follow-ups
     suggestions = generate_followups(response)
 
     return response, suggestions, sources
