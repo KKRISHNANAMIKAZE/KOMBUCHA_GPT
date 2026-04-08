@@ -1,11 +1,11 @@
 print("🚀 FILE STARTED EXECUTING")
+
 import io
 import os
 import faiss
 import numpy as np
 import pdfplumber
 import pytesseract
-import time
 
 from datetime import datetime
 from PIL import Image
@@ -55,6 +55,7 @@ UPLOAD_DIR = "uploaded_indexes"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 DATA_DIR = "data"
+os.makedirs(DATA_DIR, exist_ok=True)
 
 INDEX_PATH = os.path.join(DATA_DIR, "kombucha_index.faiss")
 CHUNKS_PATH = os.path.join(DATA_DIR, "chunks.npy")
@@ -82,25 +83,41 @@ def initialize_system():
     if model_loaded:
         return
 
-    print("🚀 Initializing system...")
+    print("⚡ Lazy initialization triggered...")
 
     try:
         download_files()
-    except:
-        pass
+        print("✅ Files downloaded")
+    except Exception as e:
+        print("❌ Download failed:", e)
+        return
 
-    research_index = faiss.read_index(INDEX_PATH)
-    research_chunks = np.load(CHUNKS_PATH, allow_pickle=True).tolist()
-    research_metadata = np.load(METADATA_PATH, allow_pickle=True).tolist()
+    try:
+        research_index = faiss.read_index(INDEX_PATH)
+        research_chunks = np.load(CHUNKS_PATH, allow_pickle=True).tolist()
+        research_metadata = np.load(METADATA_PATH, allow_pickle=True).tolist()
 
-    tokenized_corpus = [chunk.split() for chunk in research_chunks]
-    bm25 = BM25Okapi(tokenized_corpus)
+        tokenized_corpus = [chunk.split() for chunk in research_chunks]
+        bm25 = BM25Okapi(tokenized_corpus)
 
-    embed_model = SentenceTransformer("all-MiniLM-L6-v2")
-    reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
+        print("✅ FAISS + chunks loaded")
+
+    except Exception as e:
+        print("❌ FAISS loading failed:", e)
+        return
+
+    try:
+        embed_model = SentenceTransformer("all-MiniLM-L6-v2")
+        reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
+
+        print("✅ Models loaded")
+
+    except Exception as e:
+        print("❌ Model loading failed:", e)
+        return
 
     model_loaded = True
-    print("✅ System ready")
+    print("🚀 System FULLY READY")
 
 
 # ================= REQUEST MODELS =================
@@ -243,7 +260,13 @@ async def upload_file(file: UploadFile = File(...), session_id: str = "default")
 @app.post("/chat")
 def chat_endpoint(req: ChatRequest):
 
-    initialize_system()
+    if not model_loaded:
+        initialize_system()
+        return {
+            "response": "⏳ System is starting (downloading + loading models). Please try again in 20–60 seconds.",
+            "suggestions": [],
+            "sources": []
+        }
 
     update_memory(req.session_id, "user", req.message)
 

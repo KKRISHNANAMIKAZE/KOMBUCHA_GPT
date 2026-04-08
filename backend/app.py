@@ -26,13 +26,33 @@ hallucination_detector = HallucinationDetector()
 orchestrator = PromptOrchestrator()
 logger = Logger("framework_results.csv")
 
-# 🔥 Download FAISS data from Google Drive
-download_files()
+# ❌ REMOVED: download_files()
+# ❌ REMOVED: retriever = Retriever()
 
-# 🔥 Initialize FAISS Retriever
-retriever = Retriever()
+# ✅ NEW GLOBALS
+retriever = None
+data_loaded = False
 
 current_domain = None
+
+
+# ================= 🔥 LAZY LOADING =================
+def initialize_rag():
+    global retriever, data_loaded
+
+    if data_loaded:
+        return
+
+    print("🚀 Loading FAISS + Retriever...")
+
+    # ✅ Download only if NOT already present
+    if not os.path.exists("data/kombucha_index.faiss"):
+        download_files()
+
+    retriever = Retriever()
+
+    data_loaded = True
+    print("✅ Retriever ready")
 
 
 # ================= MEMORY SAVER =================
@@ -144,6 +164,9 @@ User Question:
 def process_query(query):
     global current_domain
 
+    # 🔥 ADD THIS (IMPORTANT FIX)
+    initialize_rag()
+
     # 1️⃣ Domain Classification
     domain_info = domain_classifier.classify(query)
     detected_domain = domain_info["domain"]
@@ -176,7 +199,7 @@ def process_query(query):
     # 3️⃣ Adaptive Control Policy
     control = control_policy.adapt(risk_score)
 
-    # 🔥 4️⃣ REAL FAISS RETRIEVAL
+    # 🔥 FAISS RETRIEVAL
     retrieved_context, sources = retriever.retrieve(query, k=5)
 
     # 5️⃣ Prompt Construction
@@ -188,7 +211,7 @@ def process_query(query):
         retrieved_context
     )
 
-    # 6️⃣ LLM Generation (Groq)
+    # 6️⃣ LLM Generation
     response = llm.generate(prompt, control["temperature"])
 
     # 7️⃣ Hallucination Detection
@@ -199,7 +222,6 @@ def process_query(query):
 
     validated = validator.validate(response)
 
-    # 🔥 Safety control
     if risk_score > 0.7:
         if similarity_score < 0.4:
             validated = False
@@ -219,10 +241,10 @@ def process_query(query):
         validated=validated
     )
 
-    # 9️⃣ Save Conversation Memory
+    # 9️⃣ Save Memory
     save_conversation(query, response)
 
-    # 🔟 Generate Follow-ups
+    # 🔟 Follow-ups
     suggestions = generate_followups(response)
 
     return response, suggestions, sources

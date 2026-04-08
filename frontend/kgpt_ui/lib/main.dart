@@ -5,6 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:file_picker/file_picker.dart';
+import 'screens/chat_screen.dart';
+import 'dart:html' as html;
+
 
 void main() => runApp(const KGPTApp());
 
@@ -39,7 +42,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Uint8List? selectedFileBytes;
   String? selectedFileName;
 
-  final String baseUrl = "http://localhost:8000";
+  final String baseUrl = "https://huggingface.co/spaces/krishna4/kgpt/tree/main";
   final String sessionId = "user_session_001";
 
   // ================= CHAT =================
