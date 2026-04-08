@@ -1,17 +1,10 @@
 print("🚀 FILE STARTED EXECUTING")
 
-import io
+# ================= LIGHT IMPORTS ONLY =================
 import os
-import pdfplumber
-import pytesseract
-import urllib.parse
-
-from datetime import datetime
-from PIL import Image
-from docx import Document
-from pydantic import BaseModel
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 from app import save_feedback, llm, generate_followups
 from data_loader import download_files
@@ -83,16 +76,14 @@ def initialize_system():
     print("⚡ Lazy initialization triggered...")
 
     try:
-        # 🔥 HEAVY IMPORTS MOVED HERE
+        # 🔥 HEAVY IMPORTS HERE ONLY
         import faiss
         import numpy as np
         from sentence_transformers import SentenceTransformer, CrossEncoder
         from rank_bm25 import BM25Okapi
 
-        # Download
         download_files()
 
-        # Load FAISS + data
         research_index = faiss.read_index(INDEX_PATH)
         research_chunks = np.load(CHUNKS_PATH, allow_pickle=True).tolist()
         research_metadata = np.load(METADATA_PATH, allow_pickle=True).tolist()
@@ -100,7 +91,6 @@ def initialize_system():
         tokenized_corpus = [chunk.split() for chunk in research_chunks]
         bm25 = BM25Okapi(tokenized_corpus)
 
-        # Models
         embed_model = SentenceTransformer("all-MiniLM-L6-v2")
         reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
 
@@ -156,7 +146,6 @@ Return only queries separated by newline.
         query_list = [q.strip() for q in queries.split("\n") if q.strip()]
         query_list.insert(0, question)
         return query_list[:4]
-
     except:
         return [question]
 
@@ -177,9 +166,7 @@ Context:
 Answer:
 {answer}
 
-If the answer contains unsupported claims, rewrite it so it ONLY contains information supported by the context.
-
-Return ONLY the corrected answer.
+Return corrected answer only.
 """
 
     try:
@@ -205,6 +192,12 @@ async def upload_file(file: UploadFile = File(...), session_id: str = "default")
     if embed_model is None:
         return {"status": "system_not_ready"}
 
+    # 🔥 HEAVY IMPORTS HERE
+    import io
+    import pdfplumber
+    import pytesseract
+    from PIL import Image
+    from docx import Document
     import numpy as np
     import faiss
 
@@ -267,6 +260,8 @@ def chat_endpoint(req: ChatRequest):
             "sources": []
         }
 
+    import urllib.parse
+
     update_memory(req.session_id, "user", req.message)
 
     general_words = ["hi", "hello", "hey", "thanks", "thank you"]
@@ -289,7 +284,6 @@ def chat_endpoint(req: ChatRequest):
     for query in search_queries:
 
         query_embedding = embed_model.encode([query])
-
         D, I = research_index.search(query_embedding.astype("float32"), k=5)
 
         for i in I[0]:
@@ -301,9 +295,7 @@ def chat_endpoint(req: ChatRequest):
                     retrieved_chunks.append(chunk)
 
                     src = research_metadata[i]
-
                     citation = f"{src.get('author','Unknown')} ({src.get('year','Unknown')}) - {src.get('title','Unknown')}"
-
                     paper_counter[citation] = paper_counter.get(citation, 0) + 1
 
         tokenized_query = query.split()
@@ -317,9 +309,7 @@ def chat_endpoint(req: ChatRequest):
                 retrieved_chunks.append(chunk)
 
                 src = research_metadata[i]
-
                 citation = f"{src.get('author','Unknown')} ({src.get('year','Unknown')}) - {src.get('title','Unknown')}"
-
                 paper_counter[citation] = paper_counter.get(citation, 0) + 1
 
     if len(retrieved_chunks) > 6:
@@ -333,10 +323,7 @@ def chat_endpoint(req: ChatRequest):
             history += f"{m['role']}: {m['content']}\n"
 
     prompt = f"""
-You are K-GPT, a kombucha scientific research assistant.
-
-Conversation History:
-{history}
+You are K-GPT.
 
 Context:
 {context}
@@ -352,19 +339,14 @@ Question:
 
     suggestions = generate_followups(answer)
 
-    # SOURCE LOGIC
     sorted_papers = sorted(paper_counter.items(), key=lambda x: x[1], reverse=True)
 
     sources = []
 
-    for citation, count in sorted_papers[:4]:
+    for citation, _ in sorted_papers[:4]:
         query = urllib.parse.quote(citation)
         link = f"https://scholar.google.com/scholar?q={query}"
-
-        sources.append({
-            "citation": citation,
-            "link": link
-        })
+        sources.append({"citation": citation, "link": link})
 
     return {
         "response": answer,
@@ -384,9 +366,5 @@ def home():
 
 if __name__ == "__main__":
     import uvicorn
-
     port = int(os.environ.get("PORT", 10000))
-
-    print(f"🚀 Starting server on port {port}")
-
     uvicorn.run(app, host="0.0.0.0", port=port)
