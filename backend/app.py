@@ -1,14 +1,4 @@
 # ================= IMPORTS =================
-from core.domain_classifier import DomainClassifier
-from core.risk_detector import RiskDetector
-from core.control_policy import ControlPolicy
-from core.prompt_orchestrator import PromptOrchestrator
-from core.response_validator import ResponseValidator
-from core.hallucination_detector import HallucinationDetector
-from models.llm_interface import LLMInterface
-from evaluation.logger import Logger
-
-from rag.retriever import Retriever
 from data_loader import download_files
 
 import json
@@ -16,7 +6,7 @@ import os
 from datetime import datetime
 
 
-# ================= GLOBAL (CHANGED TO LAZY) =================
+# ================= GLOBAL (UNCHANGED) =================
 domain_classifier = None
 risk_detector = None
 control_policy = None
@@ -44,6 +34,16 @@ def initialize_core():
 
     print("⚡ Initializing core system...")
 
+    # 🔥 MOVED IMPORTS HERE
+    from core.domain_classifier import DomainClassifier
+    from core.risk_detector import RiskDetector
+    from core.control_policy import ControlPolicy
+    from core.prompt_orchestrator import PromptOrchestrator
+    from core.response_validator import ResponseValidator
+    from core.hallucination_detector import HallucinationDetector
+    from models.llm_interface import LLMInterface
+    from evaluation.logger import Logger
+
     domain_classifier = DomainClassifier()
     risk_detector = RiskDetector()
     control_policy = ControlPolicy()
@@ -65,6 +65,9 @@ def initialize_rag():
         return
 
     print("🚀 Loading FAISS + Retriever...")
+
+    # 🔥 MOVED IMPORT HERE
+    from rag.retriever import Retriever
 
     if not os.path.exists("data/kombucha_index.faiss"):
         download_files()
