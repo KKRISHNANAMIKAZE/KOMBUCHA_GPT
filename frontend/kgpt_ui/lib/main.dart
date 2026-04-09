@@ -1,13 +1,9 @@
 import 'dart:convert';
-import 'dart:typed_data';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:file_picker/file_picker.dart';
-import 'screens/chat_screen.dart';
-import 'dart:html' as html;
-
 
 void main() => runApp(const KGPTApp());
 
@@ -42,7 +38,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Uint8List? selectedFileBytes;
   String? selectedFileName;
 
-  final String baseUrl = "https://huggingface.co/spaces/krishna4/kgpt/tree/main";
+  final String baseUrl = "https://kombucha-gpt.onrender.com"; // YOU WILL SET THIS
   final String sessionId = "user_session_001";
 
   // ================= CHAT =================
@@ -68,25 +64,33 @@ class _ChatScreenState extends State<ChatScreen> {
           "message": userText,
           "session_id": sessionId
         }),
-      );
+      ).timeout(const Duration(seconds: 60));
 
       final data = jsonDecode(response.body);
+
+      String botReply = data["response"] ?? "No response";
 
       setState(() {
         messages.add({
           "role": "assistant",
-          "text": data["response"],
+          "text": botReply,
           "sources": data["sources"] ?? [],
           "suggestions": data["suggestions"] ?? []
         });
       });
+
+      // 🔥 AUTO RETRY IF SYSTEM STARTING
+      if (botReply.contains("System starting")) {
+        await Future.delayed(const Duration(seconds: 10));
+        sendMessage(userText);
+      }
 
     } catch (e) {
 
       setState(() {
         messages.add({
           "role": "assistant",
-          "text": "⚠️ Backend error. Check server logs."
+          "text": "⚠️ Server is waking up or unreachable. Please try again."
         });
       });
 
@@ -133,7 +137,7 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
       );
 
-      var response = await request.send();
+      var response = await request.send().timeout(const Duration(seconds: 60));
 
       if (response.statusCode != 200) throw Exception("Upload failed");
 
@@ -167,27 +171,32 @@ class _ChatScreenState extends State<ChatScreen> {
 
   // ================= FEEDBACK =================
 
-Future<void> sendFeedback(String query,String response,String type) async {
+  Future<void> sendFeedback(String query,String response,String type) async {
 
-  final res = await http.post(
-    Uri.parse("$baseUrl/feedback"),
-    headers: {"Content-Type": "application/json"},
-    body: jsonEncode({
-      "query": query,
-      "response": response,
-      "feedback": type
-    }),
-  );
+    try {
+      final res = await http.post(
+        Uri.parse("$baseUrl/feedback"),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "query": query,
+          "response": response,
+          "feedback": type
+        }),
+      ).timeout(const Duration(seconds: 30));
 
-  final data = jsonDecode(res.body);
+      final data = jsonDecode(res.body);
 
-  setState(() {
-    messages.add({
-      "role": "assistant",
-      "text": data["response"]
-    });
-  });
-}
+      setState(() {
+        messages.add({
+          "role": "assistant",
+          "text": data["response"] ?? "Feedback received"
+        });
+      });
+
+    } catch (e) {
+      // silent fail (no UI break)
+    }
+  }
 
   // ================= REGENERATE =================
 
@@ -292,7 +301,13 @@ Future<void> sendFeedback(String query,String response,String type) async {
               if(isLoading)
                 const Padding(
                   padding: EdgeInsets.all(8),
-                  child: CircularProgressIndicator(),
+                  child: Column(
+                    children: [
+                      CircularProgressIndicator(),
+                      SizedBox(height: 6),
+                      Text("Thinking...", style: TextStyle(color: Colors.white))
+                    ],
+                  ),
                 ),
 
               Container(
