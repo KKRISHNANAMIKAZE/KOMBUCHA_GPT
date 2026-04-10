@@ -81295,7 +81295,7 @@ s=p}for(;;)switch(s){case 0:e=a==null?n.d.a.a:a
 if(J.bY(e)===0){s=1
 break}n.al(new A.afz(n,e))
 p=4
-j=A.eB("https://kombucha-gpt.onrender.com/chat",0,null)
+j=A.eB("https://kombucha-gpt.onrender.com//chat",0,null)
 i=t.N
 h=A.ah(["Content-Type","application/json"],i,i)
 s=7
@@ -81340,7 +81340,7 @@ m=g
 l=h.gb5(i).b
 n.al(new A.aft(n,m,l))
 p=5
-k=A.aFl("POST",A.eB("https://kombucha-gpt.onrender.com/upload-file?session_id=user_session_001",0,null))
+k=A.aFl("POST",A.eB("https://kombucha-gpt.onrender.com//upload-file?session_id=user_session_001",0,null))
 i=k.y
 h=m
 g=A.avv(h,t.Cm)
@@ -81371,7 +81371,7 @@ qz(a,b,c){return this.Xr(a,b,c)},
 Xr(a,b,c){var s=0,r=A.P(t.H),q=1,p=[],o=this,n,m,l,k,j,i,h
 var $async$qz=A.L(function(d,e){if(d===1){p.push(e)
 s=q}for(;;)switch(s){case 0:q=3
-l=A.eB("https://kombucha-gpt.onrender.com/feedback",0,null)
+l=A.eB("https://kombucha-gpt.onrender.com//feedback",0,null)
 k=t.N
 j=A.ah(["Content-Type","application/json"],k,k)
 s=6
