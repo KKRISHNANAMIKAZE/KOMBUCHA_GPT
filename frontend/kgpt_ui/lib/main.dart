@@ -38,7 +38,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Uint8List? selectedFileBytes;
   String? selectedFileName;
 
-  final String baseUrl = "https://kombucha-gpt.onrender.com"; // YOU WILL SET THIS
+  final String baseUrl = "https://kombucha-gpt.onrender.com"; 
   final String sessionId = "user_session_001";
 
   // ================= CHAT =================
@@ -57,14 +57,30 @@ class _ChatScreenState extends State<ChatScreen> {
 
     try {
 
-      final response = await http.post(
-        Uri.parse("$baseUrl/chat"),
-        headers: {"Content-Type": "application/json"},
-        body: jsonEncode({
-          "message": userText,
-          "session_id": sessionId
-        }),
-      ).timeout(const Duration(seconds: 60));
+      final uri = Uri.parse("$baseUrl/chat");
+
+      print("📡 Sending request to: $uri");
+
+      final response = await http
+          .post(
+            uri,
+            headers: {
+              "Content-Type": "application/json",
+              "Accept": "application/json"
+            },
+            body: jsonEncode({
+              "message": userText,
+              "session_id": sessionId
+            }),
+          )
+          .timeout(const Duration(seconds: 60));
+
+      print("✅ Status Code: ${response.statusCode}");
+      print("📩 Response Body: ${response.body}");
+
+      if (response.statusCode != 200) {
+        throw Exception("Server error: ${response.statusCode}");
+      }
 
       final data = jsonDecode(response.body);
 
@@ -79,13 +95,15 @@ class _ChatScreenState extends State<ChatScreen> {
         });
       });
 
-      // 🔥 AUTO RETRY IF SYSTEM STARTING
+      // AUTO RETRY
       if (botReply.contains("System starting")) {
         await Future.delayed(const Duration(seconds: 10));
         sendMessage(userText);
       }
 
     } catch (e) {
+
+      print("❌ ERROR: $e");
 
       setState(() {
         messages.add({
@@ -137,7 +155,7 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
       );
 
-      var response = await request.send().timeout(const Duration(seconds: 60));
+      var response = await request.send().timeout(const Duration(seconds: 200));
 
       if (response.statusCode != 200) throw Exception("Upload failed");
 
@@ -193,9 +211,7 @@ class _ChatScreenState extends State<ChatScreen> {
         });
       });
 
-    } catch (e) {
-      // silent fail (no UI break)
-    }
+    } catch (e) {}
   }
 
   // ================= REGENERATE =================
@@ -259,39 +275,21 @@ class _ChatScreenState extends State<ChatScreen> {
 
                     return ChatBubble(
                       message: messages[index],
-
                       onLike: (){
                         if(index>0){
-                          sendFeedback(
-                            messages[index-1]["text"],
-                            messages[index]["text"],
-                            "positive"
-                          );
+                          sendFeedback(messages[index-1]["text"],messages[index]["text"],"positive");
                         }
                       },
-
                       onDislike: (){
                         if(index>0){
-                          sendFeedback(
-                            messages[index-1]["text"],
-                            messages[index]["text"],
-                            "negative"
-                          );
+                          sendFeedback(messages[index-1]["text"],messages[index]["text"],"negative");
                         }
                       },
-
                       onCopy: (){
-                        Clipboard.setData(
-                          ClipboardData(text: messages[index]["text"])
-                        );
+                        Clipboard.setData(ClipboardData(text: messages[index]["text"]));
                       },
-
                       onRegenerate: regenerateLast,
-
-                      onSuggestionTap: (q){
-                        sendMessage(q);
-                      },
-
+                      onSuggestionTap: (q){ sendMessage(q); },
                     );
 
                   },
@@ -335,9 +333,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           hintStyle: TextStyle(color: Colors.white54),
                           border: InputBorder.none,
                         ),
-                        onSubmitted: (value){
-                          sendMessage();
-                        },
+                        onSubmitted: (value){ sendMessage(); },
                       ),
                     ),
 
@@ -361,12 +357,10 @@ class _ChatScreenState extends State<ChatScreen> {
 class ChatBubble extends StatelessWidget {
 
   final Map<String,dynamic> message;
-
   final VoidCallback onLike;
   final VoidCallback onDislike;
   final VoidCallback onCopy;
   final VoidCallback onRegenerate;
-
   final Function(String) onSuggestionTap;
 
   const ChatBubble({
@@ -380,16 +374,10 @@ class ChatBubble extends StatelessWidget {
   });
 
   Future<void> openLink(String url) async {
-
     final Uri uri = Uri.parse(url);
-
     if(await canLaunchUrl(uri)){
-      await launchUrl(
-        uri,
-        mode: LaunchMode.externalApplication
-      );
+      await launchUrl(uri,mode: LaunchMode.externalApplication);
     }
-
   }
 
   @override
@@ -472,19 +460,13 @@ class ChatBubble extends StatelessWidget {
 
                       return ActionChip(
                         backgroundColor: const Color(0xFF444444),
-
                         label: Text(
                           message["suggestions"][i],
-                          style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 12
-                          ),
+                          style: const TextStyle(color: Colors.white,fontSize: 12),
                         ),
-
                         onPressed: (){
                           onSuggestionTap(message["suggestions"][i]);
                         },
-
                       );
 
                     },

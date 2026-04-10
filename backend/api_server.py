@@ -254,11 +254,6 @@ def chat_endpoint(req: ChatRequest):
 
     if not model_loaded:
         initialize_system()
-        return {
-            "response": "⏳ System starting... try again in 30–60 seconds",
-            "suggestions": [],
-            "sources": []
-        }
 
     import urllib.parse
 
