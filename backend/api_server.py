@@ -19,13 +19,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ================= 🔥 STARTUP LOADING (FIX) =================
+# ================= STARTUP =================
 
 @app.on_event("startup")
 def startup_event():
     print("🔥 Starting system initialization...")
     initialize_system()
-    print("✅ System fully loaded at startup")
+    print("✅ Core system loaded")
 
 # ================= MEMORY =================
 
@@ -70,23 +70,24 @@ embed_model = None
 reranker = None
 
 model_loaded = False
+reranker_loaded = False   # 🔥 NEW
 
 
-# ================= LAZY INITIALIZER =================
+# ================= INITIALIZER =================
 
 def initialize_system():
     global research_index, research_chunks, research_metadata, bm25
-    global embed_model, reranker, model_loaded
+    global embed_model, model_loaded
 
     if model_loaded:
         return
 
-    print("⚡ Lazy initialization triggered...")
+    print("⚡ Loading core system...")
 
     try:
         import faiss
         import numpy as np
-        from sentence_transformers import SentenceTransformer, CrossEncoder
+        from sentence_transformers import SentenceTransformer
         from rank_bm25 import BM25Okapi
 
         download_files()
@@ -99,13 +100,30 @@ def initialize_system():
         bm25 = BM25Okapi(tokenized_corpus)
 
         embed_model = SentenceTransformer("all-MiniLM-L6-v2")
-        reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
 
         model_loaded = True
-        print("🚀 SYSTEM READY")
+        print("✅ Core system ready")
 
     except Exception as e:
         print("❌ INIT ERROR:", e)
+
+
+# ================= 🔥 RERANKER LAZY LOAD =================
+
+def load_reranker():
+    global reranker, reranker_loaded
+
+    if reranker_loaded:
+        return
+
+    print("⚡ Loading reranker (on demand)...")
+
+    from sentence_transformers import CrossEncoder
+    reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
+
+    reranker_loaded = True
+
+    print("✅ Reranker ready")
 
 
 # ================= REQUEST MODELS =================
@@ -185,8 +203,12 @@ Return corrected answer only.
 # ================= RERANK =================
 
 def rerank_chunks(query, chunks, top_k=6):
+
+    load_reranker()  # 🔥 ONLY ADDITION
+
     pairs = [[query, chunk] for chunk in chunks]
     scores = reranker.predict(pairs)
+
     ranked = sorted(zip(chunks, scores), key=lambda x: x[1], reverse=True)
     return [chunk for chunk, score in ranked[:top_k]]
 
@@ -258,7 +280,6 @@ async def upload_file(file: UploadFile = File(...), session_id: str = "default")
 @app.post("/chat")
 def chat_endpoint(req: ChatRequest):
 
-
     import urllib.parse
 
     update_memory(req.session_id, "user", req.message)
@@ -315,11 +336,6 @@ def chat_endpoint(req: ChatRequest):
         retrieved_chunks = rerank_chunks(req.message, retrieved_chunks)
 
     context = "\n\n".join(retrieved_chunks[:6])
-
-    history = ""
-    if req.session_id in conversation_memory:
-        for m in conversation_memory[req.session_id]:
-            history += f"{m['role']}: {m['content']}\n"
 
     prompt = f"""
 You are K-GPT.
