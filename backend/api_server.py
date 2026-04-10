@@ -19,6 +19,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ================= 🔥 STARTUP LOADING (FIX) =================
+
+@app.on_event("startup")
+def startup_event():
+    print("🔥 Starting system initialization...")
+    initialize_system()
+    print("✅ System fully loaded at startup")
+
 # ================= MEMORY =================
 
 conversation_memory = {}
@@ -76,7 +84,6 @@ def initialize_system():
     print("⚡ Lazy initialization triggered...")
 
     try:
-        # 🔥 HEAVY IMPORTS HERE ONLY
         import faiss
         import numpy as np
         from sentence_transformers import SentenceTransformer, CrossEncoder
@@ -192,7 +199,6 @@ async def upload_file(file: UploadFile = File(...), session_id: str = "default")
     if embed_model is None:
         return {"status": "system_not_ready"}
 
-    # 🔥 HEAVY IMPORTS HERE
     import io
     import pdfplumber
     import pytesseract
@@ -252,8 +258,6 @@ async def upload_file(file: UploadFile = File(...), session_id: str = "default")
 @app.post("/chat")
 def chat_endpoint(req: ChatRequest):
 
-    if not model_loaded:
-        initialize_system()
 
     import urllib.parse
 
