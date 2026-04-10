@@ -19,14 +19,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ================= STARTUP =================
-
-@app.on_event("startup")
-def startup_event():
-    print("🔥 Starting system initialization...")
-    initialize_system()
-    print("✅ Core system loaded")
-
 # ================= MEMORY =================
 
 conversation_memory = {}
@@ -70,7 +62,7 @@ embed_model = None
 reranker = None
 
 model_loaded = False
-reranker_loaded = False   # 🔥 NEW
+reranker_loaded = False  # 🔥 NEW
 
 
 # ================= INITIALIZER =================
@@ -82,7 +74,7 @@ def initialize_system():
     if model_loaded:
         return
 
-    print("⚡ Loading core system...")
+    print("⚡ Lazy initialization triggered...")
 
     try:
         import faiss
@@ -102,13 +94,13 @@ def initialize_system():
         embed_model = SentenceTransformer("all-MiniLM-L6-v2")
 
         model_loaded = True
-        print("✅ Core system ready")
+        print("🚀 SYSTEM READY")
 
     except Exception as e:
         print("❌ INIT ERROR:", e)
 
 
-# ================= 🔥 RERANKER LAZY LOAD =================
+# ================= RERANKER LAZY LOAD =================
 
 def load_reranker():
     global reranker, reranker_loaded
@@ -122,7 +114,6 @@ def load_reranker():
     reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
 
     reranker_loaded = True
-
     print("✅ Reranker ready")
 
 
@@ -279,6 +270,10 @@ async def upload_file(file: UploadFile = File(...), session_id: str = "default")
 
 @app.post("/chat")
 def chat_endpoint(req: ChatRequest):
+
+    # ✅ ORIGINAL LAZY LOADING (RESTORED)
+    if not model_loaded:
+        initialize_system()
 
     import urllib.parse
 
