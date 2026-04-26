@@ -59,10 +59,7 @@ research_metadata = None
 bm25 = None
 
 embed_model = None
-reranker = None
-
 model_loaded = False
-reranker_loaded = False  # 🔥 NEW
 
 
 # ================= INITIALIZER =================
@@ -85,8 +82,10 @@ def initialize_system():
         download_files()
 
         research_index = faiss.read_index(INDEX_PATH)
-        research_chunks = np.load(CHUNKS_PATH, allow_pickle=True).tolist()
-        research_metadata = np.load(METADATA_PATH, allow_pickle=True).tolist()
+
+        # ✅ FIX: NO .tolist() (prevents memory duplication)
+        research_chunks = np.load(CHUNKS_PATH, allow_pickle=True)
+        research_metadata = np.load(METADATA_PATH, allow_pickle=True)
 
         tokenized_corpus = [chunk.split() for chunk in research_chunks]
         bm25 = BM25Okapi(tokenized_corpus)
@@ -98,23 +97,6 @@ def initialize_system():
 
     except Exception as e:
         print("❌ INIT ERROR:", e)
-
-
-# ================= RERANKER LAZY LOAD =================
-
-def load_reranker():
-    global reranker, reranker_loaded
-
-    if reranker_loaded:
-        return
-
-    print("⚡ Loading reranker (on demand)...")
-
-    from sentence_transformers import CrossEncoder
-    reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
-
-    reranker_loaded = True
-    print("✅ Reranker ready")
 
 
 # ================= REQUEST MODELS =================
@@ -191,17 +173,11 @@ Return corrected answer only.
         return answer
 
 
-# ================= RERANK =================
+# ================= RERANK (REMOVED HEAVY MODEL) =================
 
 def rerank_chunks(query, chunks, top_k=6):
-
-    load_reranker()  # 🔥 ONLY ADDITION
-
-    pairs = [[query, chunk] for chunk in chunks]
-    scores = reranker.predict(pairs)
-
-    ranked = sorted(zip(chunks, scores), key=lambda x: x[1], reverse=True)
-    return [chunk for chunk, score in ranked[:top_k]]
+    # ✅ lightweight fallback (no memory-heavy CrossEncoder)
+    return chunks[:top_k]
 
 
 # ================= FILE UPLOAD =================
@@ -271,9 +247,13 @@ async def upload_file(file: UploadFile = File(...), session_id: str = "default")
 @app.post("/chat")
 def chat_endpoint(req: ChatRequest):
 
-    # ✅ ORIGINAL LAZY LOADING (RESTORED)
     if not model_loaded:
         initialize_system()
+        return {
+            "response": "⏳ System is loading. Please try again in 30 seconds.",
+            "suggestions": [],
+            "sources": []
+        }
 
     import urllib.parse
 
@@ -302,16 +282,14 @@ def chat_endpoint(req: ChatRequest):
         D, I = research_index.search(query_embedding.astype("float32"), k=5)
 
         for i in I[0]:
-            if 0 <= i < len(research_chunks):
+            chunk = research_chunks[i]
 
-                chunk = research_chunks[i]
+            if chunk not in retrieved_chunks:
+                retrieved_chunks.append(chunk)
 
-                if chunk not in retrieved_chunks:
-                    retrieved_chunks.append(chunk)
-
-                    src = research_metadata[i]
-                    citation = f"{src.get('author','Unknown')} ({src.get('year','Unknown')}) - {src.get('title','Unknown')}"
-                    paper_counter[citation] = paper_counter.get(citation, 0) + 1
+                src = research_metadata[i]
+                citation = f"{src.get('author','Unknown')} ({src.get('year','Unknown')}) - {src.get('title','Unknown')}"
+                paper_counter[citation] = paper_counter.get(citation, 0) + 1
 
         tokenized_query = query.split()
         bm25_scores = bm25.get_scores(tokenized_query)
