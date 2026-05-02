@@ -73,7 +73,7 @@ class _ChatScreenState extends State<ChatScreen> {
               "session_id": sessionId
             }),
           )
-          .timeout(const Duration(seconds: 60));
+          .timeout(const Duration(seconds: 200));
 
       print("✅ Status Code: ${response.statusCode}");
       print("📩 Response Body: ${response.body}");
