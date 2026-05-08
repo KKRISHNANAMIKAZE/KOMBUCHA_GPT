@@ -6,8 +6,7 @@ import os
 import threading
 from datetime import datetime
 
-
-# ================= GLOBAL (UNCHANGED) =================
+# ================= GLOBALS =================
 domain_classifier = None
 risk_detector = None
 control_policy = None
@@ -18,19 +17,39 @@ orchestrator = None
 logger = None
 
 retriever = None
+
 data_loaded = False
 system_loaded = False
+is_loading = False
 
 current_domain = None
 
-# ✅ NEW
-is_loading = False
+
+# ================= LAZY LLM =================
+def get_llm():
+    global llm
+
+    if llm is None:
+        print("🚀 Loading LLM...")
+
+        from models.llm_interface import LLMInterface
+
+        llm = LLMInterface()
+
+        print("✅ LLM Loaded")
+
+    return llm
 
 
-# ================= 🔥 LAZY CORE INIT =================
+# ================= CORE INIT =================
 def initialize_core():
-    global domain_classifier, risk_detector, control_policy
-    global llm, validator, hallucination_detector, orchestrator, logger
+    global domain_classifier
+    global risk_detector
+    global control_policy
+    global validator
+    global hallucination_detector
+    global orchestrator
+    global logger
     global system_loaded
 
     if system_loaded:
@@ -38,34 +57,35 @@ def initialize_core():
 
     print("⚡ Initializing core system...")
 
-    # 🔥 MOVED IMPORTS HERE
     from core.domain_classifier import DomainClassifier
     from core.risk_detector import RiskDetector
     from core.control_policy import ControlPolicy
     from core.prompt_orchestrator import PromptOrchestrator
     from core.response_validator import ResponseValidator
     from core.hallucination_detector import HallucinationDetector
-    from models.llm_interface import LLMInterface
     from evaluation.logger import Logger
 
     domain_classifier = DomainClassifier()
     risk_detector = RiskDetector()
     control_policy = ControlPolicy()
-    llm = LLMInterface()
+
     validator = ResponseValidator()
     hallucination_detector = HallucinationDetector()
     orchestrator = PromptOrchestrator()
+
     logger = Logger("framework_results.csv")
 
     system_loaded = True
+
     print("✅ Core system ready")
 
 
-# ================= 🔥 LAZY RAG INIT =================
+# ================= RAG INIT =================
 def initialize_rag():
-    global retriever, data_loaded, is_loading
+    global retriever
+    global data_loaded
+    global is_loading
 
-    # ✅ prevent reload loop
     if data_loaded or is_loading:
         return
 
@@ -73,9 +93,8 @@ def initialize_rag():
 
     try:
 
-        print("🚀 Loading FAISS + Retriever...")
+        print("🚀 Loading Retriever...")
 
-        # 🔥 MOVED IMPORT HERE
         from rag.retriever import Retriever
 
         if not os.path.exists("data/kombucha_index.faiss"):
@@ -95,25 +114,27 @@ def initialize_rag():
         is_loading = False
 
 
-# ================= 🚀 BACKGROUND STARTUP =================
+# ================= BACKGROUND STARTUP =================
 def startup_background_loader():
     try:
         initialize_core()
         initialize_rag()
+
         print("🔥 FULL SYSTEM READY")
+
     except Exception as e:
         print("❌ STARTUP ERROR:", e)
 
 
-# ✅ AUTO START IN BACKGROUND
 threading.Thread(
     target=startup_background_loader,
     daemon=True
 ).start()
 
 
-# ================= MEMORY SAVER =================
+# ================= MEMORY =================
 def save_conversation(query, response):
+
     os.makedirs("data/conversation_memory", exist_ok=True)
 
     filename = "data/conversation_memory/memory_log.json"
@@ -128,10 +149,13 @@ def save_conversation(query, response):
         try:
             with open(filename, "r") as f:
                 data = json.load(f)
+
                 if not isinstance(data, list):
                     data = []
+
         except:
             data = []
+
     else:
         data = []
 
@@ -141,8 +165,9 @@ def save_conversation(query, response):
         json.dump(data, f, indent=4)
 
 
-# ================= FEEDBACK SAVER =================
+# ================= FEEDBACK =================
 def save_feedback(query, response, feedback_type):
+
     os.makedirs("data/feedback", exist_ok=True)
 
     filename = "data/feedback/feedback_log.json"
@@ -158,10 +183,13 @@ def save_feedback(query, response, feedback_type):
         try:
             with open(filename, "r") as f:
                 data = json.load(f)
+
                 if not isinstance(data, list):
                     data = []
+
         except:
             data = []
+
     else:
         data = []
 
@@ -171,31 +199,39 @@ def save_feedback(query, response, feedback_type):
         json.dump(data, f, indent=4)
 
 
-# ================= FOLLOW-UP GENERATOR =================
+# ================= FOLLOWUPS =================
 def generate_followups(response):
 
     initialize_core()
 
-    follow_prompt = f"""
+    prompt = f"""
 Based on this kombucha explanation:
 
 {response}
 
 Suggest exactly 3 short relevant follow-up questions.
-Return ONLY the questions as a numbered list.
+
+Return ONLY the questions.
 """
 
-    follow_text = llm.generate(follow_prompt, temperature=0.7)
+    try:
 
-    suggestions = []
+        result = get_llm().generate(prompt, temperature=0.7)
 
-    for line in follow_text.split("\n"):
-        line = line.strip()
-        if line and line[0].isdigit():
-            cleaned = line.split(".", 1)[-1].strip()
-            suggestions.append(cleaned)
+        suggestions = []
 
-    return suggestions[:3]
+        for line in result.split("\n"):
+
+            line = line.strip()
+
+            if line:
+                cleaned = line.split(".", 1)[-1].strip()
+                suggestions.append(cleaned)
+
+        return suggestions[:3]
+
+    except:
+        return []
 
 
 # ================= FILE ANALYZER =================
@@ -204,73 +240,70 @@ def analyze_uploaded_file(file_text, user_query=None):
     initialize_core()
 
     prompt = f"""
-You are K-GPT, a kombucha-only research assistant.
+You are K-GPT.
 
-You ONLY answer kombucha-related questions.
-
-If the document is NOT related to kombucha, respond:
-"I am K-GPT and only answer kombucha-related queries."
+Answer ONLY kombucha-related queries.
 
 Document:
 {file_text}
 
-User Question:
+Question:
 {user_query}
 """
 
-    return llm.generate(prompt, temperature=0.3)
+    return get_llm().generate(prompt, temperature=0.3)
 
 
-# ================= CORE QUERY PIPELINE =================
+# ================= MAIN QUERY =================
 def process_query(query):
+
     global current_domain
 
     initialize_core()
 
-    # ✅ DO NOT KEEP RELOADING
     if not data_loaded:
 
         if is_loading:
             return (
-                "⏳ AI system is still starting. Please wait about 1 minute and try again.",
+                "⏳ AI system is still starting. Please wait 1 minute.",
                 [],
                 []
             )
 
         initialize_rag()
 
-        if not data_loaded:
-            return (
-                "⏳ AI system is still loading research data. Please try again shortly.",
-                [],
-                []
-            )
+        return (
+            "⏳ AI system is loading research data. Please retry shortly.",
+            [],
+            []
+        )
 
     domain_info = domain_classifier.classify(query)
+
     detected_domain = domain_info["domain"]
 
-    kombucha_domains = ["brewing", "health", "contamination"]
+    kombucha_domains = [
+        "brewing",
+        "health",
+        "contamination"
+    ]
 
     if detected_domain in kombucha_domains:
         current_domain = detected_domain
 
     elif detected_domain == "general":
+
         if current_domain is None:
             return (
-                "This assistant is specialized for kombucha-related queries only.",
+                "This assistant only supports kombucha-related queries.",
                 [],
                 []
             )
+
         detected_domain = current_domain
 
-    if current_domain is None:
-        return (
-            "This assistant is specialized for kombucha-related queries only.",
-            [],
-            []
-        )
-
     risk_info = risk_detector.detect(query)
+
     risk_score = risk_info["risk_score"]
 
     control = control_policy.adapt(risk_score)
@@ -285,7 +318,10 @@ def process_query(query):
         retrieved_context
     )
 
-    response = llm.generate(prompt, control["temperature"])
+    response = get_llm().generate(
+        prompt,
+        control["temperature"]
+    )
 
     similarity_score = hallucination_detector.detect(
         response,
@@ -295,13 +331,13 @@ def process_query(query):
     validated = validator.validate(response)
 
     if risk_score > 0.7:
+
         if similarity_score < 0.4:
             validated = False
 
         if not validated:
             response = (
-                "⚠️ The system detected potential uncertainty or unsafe claims. "
-                "Please consult a qualified expert."
+                "⚠️ Potential uncertainty detected."
             )
 
     logger.log(
