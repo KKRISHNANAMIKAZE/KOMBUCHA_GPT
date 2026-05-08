@@ -3,6 +3,7 @@ from data_loader import download_files
 
 import json
 import os
+import threading
 from datetime import datetime
 
 
@@ -21,6 +22,9 @@ data_loaded = False
 system_loaded = False
 
 current_domain = None
+
+# ✅ NEW
+is_loading = False
 
 
 # ================= 🔥 LAZY CORE INIT =================
@@ -59,23 +63,53 @@ def initialize_core():
 
 # ================= 🔥 LAZY RAG INIT =================
 def initialize_rag():
-    global retriever, data_loaded
+    global retriever, data_loaded, is_loading
 
-    if data_loaded:
+    # ✅ prevent reload loop
+    if data_loaded or is_loading:
         return
 
-    print("🚀 Loading FAISS + Retriever...")
+    is_loading = True
 
-    # 🔥 MOVED IMPORT HERE
-    from rag.retriever import Retriever
+    try:
 
-    if not os.path.exists("data/kombucha_index.faiss"):
-        download_files()
+        print("🚀 Loading FAISS + Retriever...")
 
-    retriever = Retriever()
+        # 🔥 MOVED IMPORT HERE
+        from rag.retriever import Retriever
 
-    data_loaded = True
-    print("✅ Retriever ready")
+        if not os.path.exists("data/kombucha_index.faiss"):
+            print("⬇️ Downloading FAISS files...")
+            download_files()
+
+        retriever = Retriever()
+
+        data_loaded = True
+
+        print("✅ Retriever ready")
+
+    except Exception as e:
+        print("❌ RAG INIT ERROR:", e)
+
+    finally:
+        is_loading = False
+
+
+# ================= 🚀 BACKGROUND STARTUP =================
+def startup_background_loader():
+    try:
+        initialize_core()
+        initialize_rag()
+        print("🔥 FULL SYSTEM READY")
+    except Exception as e:
+        print("❌ STARTUP ERROR:", e)
+
+
+# ✅ AUTO START IN BACKGROUND
+threading.Thread(
+    target=startup_background_loader,
+    daemon=True
+).start()
 
 
 # ================= MEMORY SAVER =================
@@ -192,7 +226,25 @@ def process_query(query):
     global current_domain
 
     initialize_core()
-    initialize_rag()
+
+    # ✅ DO NOT KEEP RELOADING
+    if not data_loaded:
+
+        if is_loading:
+            return (
+                "⏳ AI system is still starting. Please wait about 1 minute and try again.",
+                [],
+                []
+            )
+
+        initialize_rag()
+
+        if not data_loaded:
+            return (
+                "⏳ AI system is still loading research data. Please try again shortly.",
+                [],
+                []
+            )
 
     domain_info = domain_classifier.classify(query)
     detected_domain = domain_info["domain"]
