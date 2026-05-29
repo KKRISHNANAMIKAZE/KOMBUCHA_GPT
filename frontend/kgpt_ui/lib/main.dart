@@ -38,7 +38,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Uint8List? selectedFileBytes;
   String? selectedFileName;
 
-  final String baseUrl = "https://kombucha-gpt.onrender.com"; 
+  final String baseUrl = "https://figured-conditions-tackle-bidder.trycloudflare.com/docs"; 
   final String sessionId = "user_session_001";
 
   // ================= CHAT =================
