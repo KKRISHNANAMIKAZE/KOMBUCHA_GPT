@@ -38,7 +38,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Uint8List? selectedFileBytes;
   String? selectedFileName;
 
-  final String baseUrl = "https://figured-conditions-tackle-bidder.trycloudflare.com/docs"; 
+  final String baseUrl = "https://tunes-llp-dramatically-trainers.trycloudflare.com"; 
   final String sessionId = "user_session_001";
 
   // ================= CHAT =================
